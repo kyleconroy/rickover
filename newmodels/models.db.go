@@ -199,6 +199,8 @@ SELECT all_count.count, ready_count.count
 `
 
 type CountReadyAndAllRow struct {
+	AllCountCount   int
+	ReadyCountCount int
 }
 
 func (q *Queries) CountReadyAndAll(ctx context.Context) (CountReadyAndAllRow, error) {
@@ -212,7 +214,7 @@ func (q *Queries) CountReadyAndAll(ctx context.Context) (CountReadyAndAllRow, er
 		row = q.db.QueryRowContext(ctx, countReadyAndAll)
 	}
 	var i CountReadyAndAllRow
-	err := row.Scan()
+	err := row.Scan(&i.AllCountCount, &i.ReadyCountCount)
 	return i, err
 }
 
