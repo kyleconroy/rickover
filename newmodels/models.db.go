@@ -13,22 +13,22 @@ type DeliveryStrategy string
 
 const (
 	DeliveryStrategyAtMostOnce  DeliveryStrategy = "at_most_once"
-	DeliveryStrategyAtLeastOnce                  = "at_least_once"
+	DeliveryStrategyAtLeastOnce DeliveryStrategy = "at_least_once"
 )
 
 type JobStatus string
 
 const (
 	JobStatusQueued     JobStatus = "queued"
-	JobStatusInProgress           = "in-progress"
+	JobStatusInProgress JobStatus = "in-progress"
 )
 
 type ArchivedJobStatus string
 
 const (
 	ArchivedJobStatusSucceeded ArchivedJobStatus = "succeeded"
-	ArchivedJobStatusFailed                      = "failed"
-	ArchivedJobStatusExpired                     = "expired"
+	ArchivedJobStatusFailed    ArchivedJobStatus = "failed"
+	ArchivedJobStatusExpired   ArchivedJobStatus = "expired"
 )
 
 type Job struct {
