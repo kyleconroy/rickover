@@ -174,15 +174,15 @@ WHERE queued_jobs.id = queued_job.inner_id
 RETURNING id, name, attempts, run_after, expires_at, created_at, updated_at, status, data
 `
 
-func (q *Queries) AcquireJob(ctx context.Context) (QueuedJob, error) {
+func (q *Queries) AcquireJob(ctx context.Context, name string) (QueuedJob, error) {
 	var row *sql.Row
 	switch {
 	case q.acquireJob != nil && q.tx != nil:
-		row = q.tx.StmtContext(ctx, q.acquireJob).QueryRowContext(ctx)
+		row = q.tx.StmtContext(ctx, q.acquireJob).QueryRowContext(ctx, name)
 	case q.acquireJob != nil:
-		row = q.acquireJob.QueryRowContext(ctx)
+		row = q.acquireJob.QueryRowContext(ctx, name)
 	default:
-		row = q.db.QueryRowContext(ctx, acquireJob)
+		row = q.db.QueryRowContext(ctx, acquireJob, name)
 	}
 	var i QueuedJob
 	err := row.Scan(&i.ID, &i.Name, &i.Attempts, &i.RunAfter, &i.ExpiresAt, &i.CreatedAt, &i.UpdatedAt, &i.Status, &i.Data)
