@@ -1,0 +1,21 @@
+{
+	"package": "newmodels",
+  "emit_prepared_queries": true,
+  "emit_tags": true,
+  "out": "newmodels/models.db.go",
+  "queries": "db/queries/",
+  "schema": "db/migrations/",
+  "overrides": [
+    {
+      "package": "github.com/kevinburke/go-types",
+      "postgres_type": "pg_catalog.timestamptz",
+      "go_type": "types.NullTime",
+      "null": true
+    },
+    {
+      "package": "github.com/kevinburke/go-types",
+      "postgres_type": "uuid",
+      "go_type": "types.PrefixUUID"
+    }
+  ]
+}

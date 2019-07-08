@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/kevinburke/go-types"
 )
 
 type DeliveryStrategy string
@@ -32,32 +32,33 @@ const (
 )
 
 type Job struct {
-	Name             string
-	DeliveryStrategy DeliveryStrategy
-	Attempts         uint8
-	Concurrency      uint8
-	CreatedAt        time.Time
+	Name             string           `json:"name"`
+	DeliveryStrategy DeliveryStrategy `json:"delivery_strategy"`
+	Attempts         uint8            `json:"attempts"`
+	Concurrency      uint8            `json:"concurrency"`
+	CreatedAt        time.Time        `json:"created_at"`
 }
 
 type QueuedJob struct {
-	ID        uuid.UUID
-	Name      string
-	Attempts  uint8
-	RunAfter  time.Time
-	ExpiresAt time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Status    JobStatus
-	Data      json.RawMessage
+	ID        types.PrefixUUID `json:"id"`
+	Name      string           `json:"name"`
+	Attempts  uint8            `json:"attempts"`
+	RunAfter  time.Time        `json:"run_after"`
+	ExpiresAt types.NullTime   `json:"expires_at"`
+	CreatedAt time.Time        `json:"created_at"`
+	UpdatedAt time.Time        `json:"updated_at"`
+	Status    JobStatus        `json:"status"`
+	Data      json.RawMessage  `json:"data"`
 }
 
 type ArchivedJob struct {
-	ID        uuid.UUID
-	Name      string
-	Attempts  uint8
-	Status    ArchivedJobStatus
-	CreatedAt time.Time
-	Data      json.RawMessage
+	ID        types.PrefixUUID  `json:"id"`
+	Name      string            `json:"name"`
+	Attempts  uint8             `json:"attempts"`
+	Status    ArchivedJobStatus `json:"status"`
+	CreatedAt time.Time         `json:"created_at"`
+	Data      json.RawMessage   `json:"data"`
+	ExpiresAt types.NullTime    `json:"expires_at"`
 }
 
 type dbtx interface {
@@ -228,7 +229,7 @@ SELECT id, $2, $4, $3, data, expires_at
 FROM queued_jobs 
 WHERE id = $1
 AND name = $2
-RETURNING id, name, attempts, status, created_at, data
+RETURNING id, name, attempts, status, created_at, data, expires_at
 `
 
 func (q *Queries) CreateArchivedJob(ctx context.Context) (ArchivedJob, error) {
@@ -242,7 +243,7 @@ func (q *Queries) CreateArchivedJob(ctx context.Context) (ArchivedJob, error) {
 		row = q.db.QueryRowContext(ctx, createArchivedJob)
 	}
 	var i ArchivedJob
-	err := row.Scan(&i.ID, &i.Name, &i.Attempts, &i.Status, &i.CreatedAt, &i.Data)
+	err := row.Scan(&i.ID, &i.Name, &i.Attempts, &i.Status, &i.CreatedAt, &i.Data, &i.ExpiresAt)
 	return i, err
 }
 
@@ -286,7 +287,7 @@ WHERE id = $1
 RETURNING id, name, attempts, run_after, expires_at, created_at, updated_at, status, data
 `
 
-func (q *Queries) DecrementJobAttempts(ctx context.Context, id uuid.UUID, attempts uint8, runAfter time.Time) (QueuedJob, error) {
+func (q *Queries) DecrementJobAttempts(ctx context.Context, id types.PrefixUUID, attempts uint8, runAfter time.Time) (QueuedJob, error) {
 	var row *sql.Row
 	switch {
 	case q.decrementJobAttempts != nil && q.tx != nil:
@@ -305,7 +306,7 @@ const deleteQueuedJob = `-- name: DeleteQueuedJob :exec
 DELETE FROM queued_jobs WHERE id = $1
 `
 
-func (q *Queries) DeleteQueuedJob(ctx context.Context, id uuid.UUID) error {
+func (q *Queries) DeleteQueuedJob(ctx context.Context, id types.PrefixUUID) error {
 	var err error
 	switch {
 	case q.deleteQueuedJob != nil && q.tx != nil:
@@ -390,12 +391,12 @@ func (q *Queries) GetAllJobs(ctx context.Context) ([]Job, error) {
 }
 
 const getArchivedJob = `-- name: GetArchivedJob :one
-SELECT id, name, attempts, status, created_at, data
+SELECT id, name, attempts, status, created_at, data, expires_at
 FROM archived_jobs
 WHERE id = $1
 `
 
-func (q *Queries) GetArchivedJob(ctx context.Context, id uuid.UUID) (ArchivedJob, error) {
+func (q *Queries) GetArchivedJob(ctx context.Context, id types.PrefixUUID) (ArchivedJob, error) {
 	var row *sql.Row
 	switch {
 	case q.getArchivedJob != nil && q.tx != nil:
@@ -406,7 +407,7 @@ func (q *Queries) GetArchivedJob(ctx context.Context, id uuid.UUID) (ArchivedJob
 		row = q.db.QueryRowContext(ctx, getArchivedJob, id)
 	}
 	var i ArchivedJob
-	err := row.Scan(&i.ID, &i.Name, &i.Attempts, &i.Status, &i.CreatedAt, &i.Data)
+	err := row.Scan(&i.ID, &i.Name, &i.Attempts, &i.Status, &i.CreatedAt, &i.Data, &i.ExpiresAt)
 	return i, err
 }
 
@@ -520,7 +521,7 @@ FROM queued_jobs
 WHERE id = $1
 `
 
-func (q *Queries) GetQueuedJob(ctx context.Context, id uuid.UUID) (QueuedJob, error) {
+func (q *Queries) GetQueuedJob(ctx context.Context, id types.PrefixUUID) (QueuedJob, error) {
 	var row *sql.Row
 	switch {
 	case q.getQueuedJob != nil && q.tx != nil:
