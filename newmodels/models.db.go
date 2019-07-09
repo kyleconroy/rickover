@@ -234,15 +234,15 @@ AND name = $2
 RETURNING id, name, attempts, status, created_at, data, expires_at
 `
 
-func (q *Queries) CreateArchivedJob(ctx context.Context) (ArchivedJob, error) {
+func (q *Queries) CreateArchivedJob(ctx context.Context, id types.PrefixUUID, name string, status ArchivedJobStatus, attempts uint8) (ArchivedJob, error) {
 	var row *sql.Row
 	switch {
 	case q.createArchivedJob != nil && q.tx != nil:
-		row = q.tx.StmtContext(ctx, q.createArchivedJob).QueryRowContext(ctx)
+		row = q.tx.StmtContext(ctx, q.createArchivedJob).QueryRowContext(ctx, id, name, status, attempts)
 	case q.createArchivedJob != nil:
-		row = q.createArchivedJob.QueryRowContext(ctx)
+		row = q.createArchivedJob.QueryRowContext(ctx, id, name, status, attempts)
 	default:
-		row = q.db.QueryRowContext(ctx, createArchivedJob)
+		row = q.db.QueryRowContext(ctx, createArchivedJob, id, name, status, attempts)
 	}
 	var i ArchivedJob
 	err := row.Scan(&i.ID, &i.Name, &i.Attempts, &i.Status, &i.CreatedAt, &i.Data, &i.ExpiresAt)
@@ -340,15 +340,15 @@ AND NOT EXISTS (
 RETURNING id, name, attempts, run_after, expires_at, created_at, updated_at, status, data
 `
 
-func (q *Queries) EnqueueJob(ctx context.Context) (QueuedJob, error) {
+func (q *Queries) EnqueueJob(ctx context.Context, id types.PrefixUUID, name string, runAfter time.Time, expiresAt types.NullTime, data json.RawMessage) (QueuedJob, error) {
 	var row *sql.Row
 	switch {
 	case q.enqueueJob != nil && q.tx != nil:
-		row = q.tx.StmtContext(ctx, q.enqueueJob).QueryRowContext(ctx)
+		row = q.tx.StmtContext(ctx, q.enqueueJob).QueryRowContext(ctx, id, name, runAfter, expiresAt, data)
 	case q.enqueueJob != nil:
-		row = q.enqueueJob.QueryRowContext(ctx)
+		row = q.enqueueJob.QueryRowContext(ctx, id, name, runAfter, expiresAt, data)
 	default:
-		row = q.db.QueryRowContext(ctx, enqueueJob)
+		row = q.db.QueryRowContext(ctx, enqueueJob, id, name, runAfter, expiresAt, data)
 	}
 	var i QueuedJob
 	err := row.Scan(&i.ID, &i.Name, &i.Attempts, &i.RunAfter, &i.ExpiresAt, &i.CreatedAt, &i.UpdatedAt, &i.Status, &i.Data)
