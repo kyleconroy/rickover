@@ -10,10 +10,10 @@ import (
 
 	"github.com/kevinburke/go-types"
 	"github.com/kevinburke/rest"
-	"github.com/kevinburke/rickover/models"
 	"github.com/kevinburke/rickover/models/archived_jobs"
 	"github.com/kevinburke/rickover/models/jobs"
 	"github.com/kevinburke/rickover/models/queued_jobs"
+	models "github.com/kevinburke/rickover/newmodels"
 	"github.com/kevinburke/rickover/services"
 	"github.com/kevinburke/rickover/test"
 	"github.com/kevinburke/rickover/test/factory"
@@ -111,7 +111,7 @@ func TestWorkerRetriesJSON503(t *testing.T) {
 			test.AssertNotError(t, err, "")
 
 			// Cheating, hit the internal success callback.
-			callbackErr := services.HandleStatusCallback(qj.ID, "echo", models.StatusSucceeded, uint8(5), true)
+			callbackErr := services.HandleStatusCallback(qj.ID, "echo", models.ArchivedJobStatusSucceeded, uint8(5), true)
 			test.AssertNotError(t, callbackErr, "")
 		}
 	}))
@@ -132,7 +132,7 @@ func TestWorkerWaitsConnectTimeout(t *testing.T) {
 
 	qj := factory.CreateQueuedJob(t, factory.EmptyData)
 	go func() {
-		err := services.HandleStatusCallback(qj.ID, qj.Name, models.StatusSucceeded, qj.Attempts, true)
+		err := services.HandleStatusCallback(qj.ID, qj.Name, models.ArchivedJobStatusSucceeded, qj.Attempts, true)
 		test.AssertNotError(t, err, "")
 	}()
 
@@ -162,7 +162,7 @@ func TestWorkerWaitsRequestTimeout(t *testing.T) {
 
 	qj := factory.CreateQueuedJob(t, factory.EmptyData)
 	go func() {
-		err := services.HandleStatusCallback(qj.ID, qj.Name, models.StatusSucceeded, qj.Attempts, true)
+		err := services.HandleStatusCallback(qj.ID, qj.Name, models.ArchivedJobStatusSucceeded, qj.Attempts, true)
 		test.AssertNotError(t, err, "")
 	}()
 
@@ -171,7 +171,7 @@ func TestWorkerWaitsRequestTimeout(t *testing.T) {
 	wg.Wait()
 	aj, err := archived_jobs.Get(qj.ID)
 	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, aj.Status, models.StatusSucceeded)
+	test.AssertEquals(t, aj.Status, models.ArchivedJobStatusSucceeded)
 }
 
 func TestWorkerDoesNotWaitConnectionFailure(t *testing.T) {
@@ -192,5 +192,5 @@ func TestWorkerDoesNotWaitConnectionFailure(t *testing.T) {
 	test.AssertNotError(t, err, "")
 	aj, err := archived_jobs.Get(qj.ID)
 	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, aj.Status, models.StatusFailed)
+	test.AssertEquals(t, aj.Status, models.ArchivedJobStatusFailed)
 }

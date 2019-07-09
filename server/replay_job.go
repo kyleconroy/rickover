@@ -9,9 +9,9 @@ import (
 	metrics "github.com/kevinburke/go-simple-metrics"
 	"github.com/kevinburke/go-types"
 	"github.com/kevinburke/rest"
-	"github.com/kevinburke/rickover/models"
 	"github.com/kevinburke/rickover/models/archived_jobs"
 	"github.com/kevinburke/rickover/models/queued_jobs"
+	models "github.com/kevinburke/rickover/newmodels"
 )
 
 // POST /v1/jobs(/:name)/:id/replay
@@ -33,7 +33,7 @@ func replayHandler() http.Handler {
 		qj, err := queued_jobs.GetRetry(id, 3)
 		var expiresAt types.NullTime
 		if err == nil {
-			if qj.Status == models.StatusQueued {
+			if qj.Status == models.JobStatusQueued {
 				apierr := &rest.Error{
 					Title:    "Cannot replay a queued job. Wait for it to start",
 					ID:       "invalid_replay_attempt",

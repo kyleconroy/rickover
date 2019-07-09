@@ -21,10 +21,10 @@ import (
 	"github.com/kevinburke/go-types"
 	"github.com/kevinburke/rest"
 	"github.com/kevinburke/rickover/config"
-	"github.com/kevinburke/rickover/models"
 	"github.com/kevinburke/rickover/models/archived_jobs"
 	"github.com/kevinburke/rickover/models/jobs"
 	"github.com/kevinburke/rickover/models/queued_jobs"
+	models "github.com/kevinburke/rickover/newmodels"
 )
 
 // TODO(burke) use http.LimitedBytesReader.
@@ -234,7 +234,7 @@ func createJob() http.Handler {
 			badRequest(w, r, createEmptyErr("delivery_strategy", r.URL.Path))
 			return
 		}
-		if jr.DeliveryStrategy != models.StrategyAtLeastOnce && jr.DeliveryStrategy != models.StrategyAtMostOnce {
+		if jr.DeliveryStrategy != models.DeliveryStrategyAtLeastOnce && jr.DeliveryStrategy != models.DeliveryStrategyAtMostOnce {
 			err := &rest.Error{
 				Instance: r.URL.Path,
 				ID:       "invalid_delivery_strategy",
@@ -244,7 +244,7 @@ func createJob() http.Handler {
 			return
 		}
 
-		if jr.DeliveryStrategy == models.StrategyAtMostOnce && jr.Attempts > 1 {
+		if jr.DeliveryStrategy == models.DeliveryStrategyAtMostOnce && jr.Attempts > 1 {
 			err := &rest.Error{
 				Instance: r.URL.Path,
 				ID:       "invalid_attempts",

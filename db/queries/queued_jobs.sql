@@ -21,10 +21,10 @@ SELECT *
 FROM queued_jobs
 WHERE id = $1;
 
--- name: DeleteQueuedJob :exec
+-- name: DeleteQueuedJob :execrows
 DELETE FROM queued_jobs WHERE id = $1;
 
--- name: AcquireJob :one
+-- name: AcquireJobs :many
 WITH queued_job as (
 	SELECT id AS inner_id
 	FROM queued_jobs
@@ -58,7 +58,8 @@ WITH all_count AS (
 ), ready_count AS (
 	SELECT count(*) FROM queued_jobs WHERE run_after <= now()
 ) 
-SELECT all_count.count, ready_count.count;
+SELECT all_count.count, ready_count.count
+FROM all_count, ready_count;
 
 -- name: GetCountsByStatus :many
 SELECT name, count(*)

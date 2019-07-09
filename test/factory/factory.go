@@ -11,10 +11,10 @@ import (
 	"github.com/kevinburke/go-types"
 	"github.com/kevinburke/go.uuid"
 	"github.com/kevinburke/rickover/downstream"
-	"github.com/kevinburke/rickover/models"
 	"github.com/kevinburke/rickover/models/archived_jobs"
 	"github.com/kevinburke/rickover/models/jobs"
 	"github.com/kevinburke/rickover/models/queued_jobs"
+	models "github.com/kevinburke/rickover/newmodels"
 	"github.com/kevinburke/rickover/services"
 	"github.com/kevinburke/rickover/test"
 )
@@ -40,14 +40,14 @@ var RD = &RandomData{
 
 var SampleJob = models.Job{
 	Name:             "echo",
-	DeliveryStrategy: models.StrategyAtLeastOnce,
+	DeliveryStrategy: models.DeliveryStrategyAtLeastOnce,
 	Attempts:         7,
 	Concurrency:      1,
 }
 
 var SampleAtMostOnceJob = models.Job{
 	Name:             "at-most-once",
-	DeliveryStrategy: models.StrategyAtMostOnce,
+	DeliveryStrategy: models.DeliveryStrategyAtMostOnce,
 	Attempts:         1,
 	Concurrency:      5,
 }
@@ -81,7 +81,7 @@ func CreateUniqueQueuedJob(t testing.TB, data json.RawMessage) (*models.Job, *mo
 	id := types.GenerateUUID("jobname_")
 	j := models.Job{
 		Name:             id.String(),
-		DeliveryStrategy: models.StrategyAtLeastOnce,
+		DeliveryStrategy: models.DeliveryStrategyAtLeastOnce,
 		Attempts:         7,
 		Concurrency:      1,
 	}
@@ -107,7 +107,7 @@ func CreateQJ(t testing.TB) *models.QueuedJob {
 		Name:             jobname.String(),
 		Attempts:         11,
 		Concurrency:      3,
-		DeliveryStrategy: models.StrategyAtLeastOnce,
+		DeliveryStrategy: models.DeliveryStrategyAtLeastOnce,
 	})
 	test.AssertNotError(t, err, "create job failed")
 	now := time.Now().UTC()
@@ -122,10 +122,10 @@ func CreateQJ(t testing.TB) *models.QueuedJob {
 	return qj
 }
 
-func CreateArchivedJob(t *testing.T, data json.RawMessage, status models.JobStatus) *models.ArchivedJob {
+func CreateArchivedJob(t *testing.T, data json.RawMessage, status models.ArchivedJobStatus) *models.ArchivedJob {
 	t.Helper()
 	_, qj := createJobAndQueuedJob(t, SampleJob, data, false)
-	aj, err := archived_jobs.Create(qj.ID, qj.Name, models.StatusSucceeded, qj.Attempts)
+	aj, err := archived_jobs.Create(qj.ID, qj.Name, models.ArchivedJobStatusSucceeded, qj.Attempts)
 	test.AssertNotError(t, err, "")
 	err = queued_jobs.DeleteRetry(qj.ID, 3)
 	test.AssertNotError(t, err, "")

@@ -10,9 +10,9 @@ import (
 
 	"github.com/kevinburke/go-dberror"
 	"github.com/kevinburke/go-types"
-	"github.com/kevinburke/rickover/models"
 	"github.com/kevinburke/rickover/models/jobs"
 	"github.com/kevinburke/rickover/models/queued_jobs"
+	models "github.com/kevinburke/rickover/newmodels"
 	"github.com/kevinburke/rickover/services"
 	"github.com/kevinburke/rickover/test"
 	"github.com/kevinburke/rickover/test/factory"
@@ -22,7 +22,7 @@ var empty = json.RawMessage([]byte("{}"))
 
 var sampleJob = models.Job{
 	Name:             "echo",
-	DeliveryStrategy: models.StrategyAtLeastOnce,
+	DeliveryStrategy: models.DeliveryStrategyAtLeastOnce,
 	Attempts:         3,
 	Concurrency:      1,
 }
@@ -49,7 +49,7 @@ func TestEnqueue(t *testing.T) {
 	test.AssertEquals(t, qj.ID.String(), "job_6740b44e-13b9-475d-af06-979627e0e0d6")
 	test.AssertEquals(t, qj.Name, "echo")
 	test.AssertEquals(t, qj.Attempts, uint8(7))
-	test.AssertEquals(t, qj.Status, models.StatusQueued)
+	test.AssertEquals(t, qj.Status, models.JobStatusQueued)
 
 	diff := time.Since(qj.RunAfter)
 	test.Assert(t, diff < 100*time.Millisecond, "")
@@ -66,7 +66,7 @@ func testEnqueueNoData(t *testing.T) {
 	id := types.GenerateUUID("jobname_")
 	j := models.Job{
 		Name:             id.String(),
-		DeliveryStrategy: models.StrategyAtLeastOnce,
+		DeliveryStrategy: models.DeliveryStrategyAtLeastOnce,
 		Attempts:         7,
 		Concurrency:      1,
 	}
@@ -125,7 +125,7 @@ func testEnqueueUnknownJobTypeErrNoRows(t *testing.T) {
 func testEnqueueWithExistingArchivedJobFails(t *testing.T) {
 	t.Parallel()
 	_, qj := factory.CreateUniqueQueuedJob(t, factory.EmptyData)
-	err := services.HandleStatusCallback(qj.ID, qj.Name, models.StatusSucceeded, qj.Attempts, true)
+	err := services.HandleStatusCallback(qj.ID, qj.Name, models.ArchivedJobStatusSucceeded, qj.Attempts, true)
 	test.AssertNotError(t, err, "")
 	expiresAt := types.NullTime{Valid: false}
 	runAfter := time.Now().UTC()
@@ -221,7 +221,7 @@ func testAcquireReturnsCorrectValues(t *testing.T) {
 	gotQj, err := queued_jobs.Acquire(job.Name)
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, gotQj.ID.String(), qj.ID.String())
-	test.AssertEquals(t, gotQj.Status, models.StatusInProgress)
+	test.AssertEquals(t, gotQj.Status, models.JobStatusInProgress)
 }
 
 func TestAcquireTwoThreads(t *testing.T) {
@@ -319,7 +319,7 @@ func TestCountByStatus(t *testing.T) {
 	factory.CreateQueuedJobOnly(t, job.Name, factory.EmptyData)
 	factory.CreateQueuedJobOnly(t, job.Name, factory.EmptyData)
 	factory.CreateAtMostOnceJob(t, factory.EmptyData)
-	m, err := queued_jobs.GetCountsByStatus(models.StatusQueued)
+	m, err := queued_jobs.GetCountsByStatus(models.JobStatusQueued)
 	test.AssertNotError(t, err, "")
 	test.Assert(t, len(m) >= 2, "expected at least 2 queued jobs in the database")
 	test.AssertEquals(t, m[job.Name], int64(3))

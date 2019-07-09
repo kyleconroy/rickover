@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/kevinburke/rest"
-	"github.com/kevinburke/rickover/models"
+	models "github.com/kevinburke/rickover/newmodels"
 	"github.com/kevinburke/rickover/test"
 )
 
@@ -95,7 +95,7 @@ func Test400AtMostOnceAndAttempts(t *testing.T) {
 	b := new(bytes.Buffer)
 	body := CreateJobRequest{
 		Name:             "email-signup",
-		DeliveryStrategy: models.StrategyAtMostOnce,
+		DeliveryStrategy: models.DeliveryStrategyAtMostOnce,
 		Attempts:         7,
 	}
 	json.NewEncoder(b).Encode(body)
@@ -135,7 +135,7 @@ func Test400ZeroAttempts(t *testing.T) {
 	b := new(bytes.Buffer)
 	body := CreateJobRequest{
 		Name:             "email-signup",
-		DeliveryStrategy: models.StrategyAtMostOnce,
+		DeliveryStrategy: models.DeliveryStrategyAtMostOnce,
 		Attempts:         0,
 	}
 	json.NewEncoder(b).Encode(body)
@@ -156,7 +156,7 @@ func Test400ConcurrencyNotSet(t *testing.T) {
 	b := new(bytes.Buffer)
 	body := CreateJobRequest{
 		Name:             "email-signup",
-		DeliveryStrategy: models.StrategyAtLeastOnce,
+		DeliveryStrategy: models.DeliveryStrategyAtLeastOnce,
 		Attempts:         3,
 	}
 	json.NewEncoder(b).Encode(body)
@@ -173,7 +173,7 @@ func Test400ConcurrencyNotSet(t *testing.T) {
 
 var validRequest = CreateJobRequest{
 	Name:             "email-signup",
-	DeliveryStrategy: models.StrategyAtLeastOnce,
+	DeliveryStrategy: models.DeliveryStrategyAtLeastOnce,
 	Attempts:         7,
 	Concurrency:      3,
 }

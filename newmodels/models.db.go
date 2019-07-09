@@ -75,7 +75,7 @@ func New(db dbtx) *Queries {
 func Prepare(ctx context.Context, db dbtx) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
-	if q.acquireJob, err = db.PrepareContext(ctx, acquireJob); err != nil {
+	if q.acquireJobs, err = db.PrepareContext(ctx, acquireJobs); err != nil {
 		return nil, err
 	}
 	if q.countReadyAndAll, err = db.PrepareContext(ctx, countReadyAndAll); err != nil {
@@ -120,7 +120,7 @@ func Prepare(ctx context.Context, db dbtx) (*Queries, error) {
 type Queries struct {
 	db                   dbtx
 	tx                   *sql.Tx
-	acquireJob           *sql.Stmt
+	acquireJobs          *sql.Stmt
 	countReadyAndAll     *sql.Stmt
 	createArchivedJob    *sql.Stmt
 	createJob            *sql.Stmt
@@ -139,7 +139,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
 		db:                   tx,
 		tx:                   tx,
-		acquireJob:           q.acquireJob,
+		acquireJobs:          q.acquireJobs,
 		countReadyAndAll:     q.countReadyAndAll,
 		createArchivedJob:    q.createArchivedJob,
 		createJob:            q.createJob,
@@ -155,7 +155,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	}
 }
 
-const acquireJob = `-- name: AcquireJob :one
+const acquireJobs = `-- name: AcquireJobs :many
 WITH queued_job as (
 	SELECT id AS inner_id
 	FROM queued_jobs
@@ -174,19 +174,36 @@ WHERE queued_jobs.id = queued_job.inner_id
 RETURNING id, name, attempts, run_after, expires_at, created_at, updated_at, status, data
 `
 
-func (q *Queries) AcquireJob(ctx context.Context, name string) (QueuedJob, error) {
-	var row *sql.Row
+func (q *Queries) AcquireJobs(ctx context.Context, name string) ([]QueuedJob, error) {
+	var rows *sql.Rows
+	var err error
 	switch {
-	case q.acquireJob != nil && q.tx != nil:
-		row = q.tx.StmtContext(ctx, q.acquireJob).QueryRowContext(ctx, name)
-	case q.acquireJob != nil:
-		row = q.acquireJob.QueryRowContext(ctx, name)
+	case q.acquireJobs != nil && q.tx != nil:
+		rows, err = q.tx.StmtContext(ctx, q.acquireJobs).QueryContext(ctx, name)
+	case q.acquireJobs != nil:
+		rows, err = q.acquireJobs.QueryContext(ctx, name)
 	default:
-		row = q.db.QueryRowContext(ctx, acquireJob, name)
+		rows, err = q.db.QueryContext(ctx, acquireJobs, name)
 	}
-	var i QueuedJob
-	err := row.Scan(&i.ID, &i.Name, &i.Attempts, &i.RunAfter, &i.ExpiresAt, &i.CreatedAt, &i.UpdatedAt, &i.Status, &i.Data)
-	return i, err
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []QueuedJob{}
+	for rows.Next() {
+		var i QueuedJob
+		if err := rows.Scan(&i.ID, &i.Name, &i.Attempts, &i.RunAfter, &i.ExpiresAt, &i.CreatedAt, &i.UpdatedAt, &i.Status, &i.Data); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const countReadyAndAll = `-- name: CountReadyAndAll :one
@@ -196,6 +213,7 @@ WITH all_count AS (
 	SELECT count(*) FROM queued_jobs WHERE run_after <= now()
 ) 
 SELECT all_count.count, ready_count.count
+FROM all_count, ready_count
 `
 
 type CountReadyAndAllRow struct {
@@ -304,21 +322,25 @@ func (q *Queries) DecrementJobAttempts(ctx context.Context, id types.PrefixUUID,
 	return i, err
 }
 
-const deleteQueuedJob = `-- name: DeleteQueuedJob :exec
+const deleteQueuedJob = `-- name: DeleteQueuedJob :execrows
 DELETE FROM queued_jobs WHERE id = $1
 `
 
-func (q *Queries) DeleteQueuedJob(ctx context.Context, id types.PrefixUUID) error {
+func (q *Queries) DeleteQueuedJob(ctx context.Context, id types.PrefixUUID) (int64, error) {
+	var result sql.Result
 	var err error
 	switch {
 	case q.deleteQueuedJob != nil && q.tx != nil:
-		_, err = q.tx.StmtContext(ctx, q.deleteQueuedJob).ExecContext(ctx, id)
+		result, err = q.tx.StmtContext(ctx, q.deleteQueuedJob).ExecContext(ctx, id)
 	case q.deleteQueuedJob != nil:
-		_, err = q.deleteQueuedJob.ExecContext(ctx, id)
+		result, err = q.deleteQueuedJob.ExecContext(ctx, id)
 	default:
-		_, err = q.db.ExecContext(ctx, deleteQueuedJob, id)
+		result, err = q.db.ExecContext(ctx, deleteQueuedJob, id)
 	}
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const enqueueJob = `-- name: EnqueueJob :one

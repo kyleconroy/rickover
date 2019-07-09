@@ -6,8 +6,8 @@ import (
 	"time"
 
 	types "github.com/kevinburke/go-types"
-	"github.com/kevinburke/rickover/models"
 	"github.com/kevinburke/rickover/models/jobs"
+	models "github.com/kevinburke/rickover/newmodels"
 	"github.com/kevinburke/rickover/test"
 )
 
@@ -49,7 +49,7 @@ func newJob(t *testing.T) models.Job {
 	id := types.GenerateUUID("jobname_")
 	return models.Job{
 		Name:             id.String(),
-		DeliveryStrategy: models.StrategyAtLeastOnce,
+		DeliveryStrategy: models.DeliveryStrategyAtLeastOnce,
 		Attempts:         3,
 		Concurrency:      1,
 	}
@@ -61,7 +61,7 @@ func testCreateReturnsRecord(t *testing.T) {
 	j, err := jobs.Create(j0)
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, j.Name, j0.Name)
-	test.AssertEquals(t, j.DeliveryStrategy, models.StrategyAtLeastOnce)
+	test.AssertEquals(t, j.DeliveryStrategy, models.DeliveryStrategyAtLeastOnce)
 	test.AssertEquals(t, j.Attempts, uint8(3))
 	test.AssertEquals(t, j.Concurrency, uint8(1))
 	diff := time.Since(j.CreatedAt)
@@ -76,7 +76,7 @@ func testGet(t *testing.T) {
 	j, err := jobs.Get(j0.Name)
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, j.Name, j0.Name)
-	test.AssertEquals(t, j.DeliveryStrategy, models.StrategyAtLeastOnce)
+	test.AssertEquals(t, j.DeliveryStrategy, models.DeliveryStrategyAtLeastOnce)
 	test.AssertEquals(t, j.Attempts, uint8(3))
 	test.AssertEquals(t, j.Concurrency, uint8(1))
 	diff := time.Since(j.CreatedAt)

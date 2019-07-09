@@ -13,10 +13,10 @@ import (
 	"github.com/kevinburke/go-dberror"
 	metrics "github.com/kevinburke/go-simple-metrics"
 	"github.com/kevinburke/go-types"
-	"github.com/kevinburke/rickover/models"
 	"github.com/kevinburke/rickover/models/archived_jobs"
 	"github.com/kevinburke/rickover/models/jobs"
 	"github.com/kevinburke/rickover/models/queued_jobs"
+	models "github.com/kevinburke/rickover/newmodels"
 )
 
 // HandleStatusCallback updates a queued job with the provided status and
@@ -28,9 +28,9 @@ import (
 // already exists, the queued job no longer exists by the time you attempt to
 // delete it, the number of attempts for the queued job don't match up with the
 // passed in value (slow)
-func HandleStatusCallback(id types.PrefixUUID, name string, status models.JobStatus, attempt uint8, retryable bool) error {
-	if status == models.StatusSucceeded {
-		err := createAndDelete(id, name, models.StatusSucceeded, attempt)
+func HandleStatusCallback(id types.PrefixUUID, name string, status models.ArchivedJobStatus, attempt uint8, retryable bool) error {
+	if status == models.ArchivedJobStatusSucceeded {
+		err := createAndDelete(id, name, models.ArchivedJobStatusSucceeded, attempt)
 		if err != nil {
 			go metrics.Increment("archived_job.create.success.error")
 		} else {
@@ -39,7 +39,7 @@ func HandleStatusCallback(id types.PrefixUUID, name string, status models.JobSta
 			go metrics.Increment("archived_job.create")
 		}
 		return err
-	} else if status == models.StatusFailed {
+	} else if status == models.ArchivedJobStatusFailed {
 		err := handleFailedCallback(id, name, attempt, retryable)
 		if err != nil {
 			go metrics.Increment("archived_job.create.failed.error")
@@ -56,7 +56,7 @@ func HandleStatusCallback(id types.PrefixUUID, name string, status models.JobSta
 
 // createAndDelete creates an archived job, deletes the queued job, and returns
 // any errors.
-func createAndDelete(id types.PrefixUUID, name string, status models.JobStatus, attempt uint8) error {
+func createAndDelete(id types.PrefixUUID, name string, status models.ArchivedJobStatus, attempt uint8) error {
 	start := time.Now()
 	_, err := archived_jobs.Create(id, name, status, attempt)
 	go metrics.Time("archived_job.create.latency", time.Since(start))
@@ -91,14 +91,14 @@ func getRunAfter(totalAttempts, remainingAttempts uint8) time.Time {
 func handleFailedCallback(id types.PrefixUUID, name string, attempt uint8, retryable bool) error {
 	remainingAttempts := attempt - 1
 	if !retryable || remainingAttempts == 0 {
-		return createAndDelete(id, name, models.StatusFailed, remainingAttempts)
+		return createAndDelete(id, name, models.ArchivedJobStatusFailed, remainingAttempts)
 	}
 	job, err := jobs.GetRetry(name, 3)
 	if err != nil {
 		return err
 	}
-	if job.DeliveryStrategy == models.StrategyAtMostOnce {
-		return createAndDelete(id, name, models.StatusFailed, remainingAttempts)
+	if job.DeliveryStrategy == models.DeliveryStrategyAtMostOnce {
+		return createAndDelete(id, name, models.ArchivedJobStatusFailed, remainingAttempts)
 	} else {
 		// Try the job again. Note the database decrements the attempt counter
 		start := time.Now()

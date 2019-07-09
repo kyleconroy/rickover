@@ -12,9 +12,9 @@ import (
 
 	"github.com/kevinburke/go-dberror"
 	metrics "github.com/kevinburke/go-simple-metrics"
-	"github.com/kevinburke/rickover/models"
 	"github.com/kevinburke/rickover/models/jobs"
 	"github.com/kevinburke/rickover/models/queued_jobs"
+	models "github.com/kevinburke/rickover/newmodels"
 	"golang.org/x/sync/errgroup"
 )
 

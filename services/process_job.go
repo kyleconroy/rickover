@@ -12,8 +12,8 @@ import (
 	"github.com/kevinburke/go-simple-metrics"
 	"github.com/kevinburke/rest"
 	"github.com/kevinburke/rickover/downstream"
-	"github.com/kevinburke/rickover/models"
 	"github.com/kevinburke/rickover/models/queued_jobs"
+	models "github.com/kevinburke/rickover/newmodels"
 )
 
 // 10ms * 2^10 ~ 10 seconds between attempts
@@ -77,7 +77,7 @@ func (jp *JobProcessor) DoWork(qj *models.QueuedJob) error {
 			// requests until the new server is ready, and we see a timeout.
 			return waitForJob(qj, jp.Timeout)
 		} else {
-			return HandleStatusCallback(qj.ID, qj.Name, models.StatusFailed, qj.Attempts, true)
+			return HandleStatusCallback(qj.ID, qj.Name, models.ArchivedJobStatusFailed, qj.Attempts, true)
 		}
 	}
 	return waitForJob(qj, jp.Timeout)
@@ -93,6 +93,7 @@ func jitter(val float64) float64 {
 func (jp JobProcessor) Sleep(failedAttempts uint32) time.Duration {
 	return GetSleepDuration(jp.SleepFactor, failedAttempts)
 }
+
 // GetSleepDuration calculates sleep duration
 func GetSleepDuration(sleepFactor float64, failedAttempts uint32) time.Duration {
 	multiplier := math.Pow(sleepFactor, float64(failedAttempts))
@@ -106,7 +107,7 @@ func (jp *JobProcessor) requestRetry(qj *models.QueuedJob) error {
 	log.Printf("processing job %s (type %s)", qj.ID.String(), qj.Name)
 	for i := uint8(0); i < 3; i++ {
 		if qj.ExpiresAt.Valid && time.Since(qj.ExpiresAt.Time) >= 0 {
-			return createAndDelete(qj.ID, qj.Name, models.StatusExpired, qj.Attempts)
+			return createAndDelete(qj.ID, qj.Name, models.ArchivedJobStatusExpired, qj.Attempts)
 		}
 		params := &downstream.JobParams{
 			Data:     qj.Data,
@@ -162,7 +163,7 @@ func waitForJob(qj *models.QueuedJob, failTimeout time.Duration) error {
 		case <-timeoutChan:
 			go metrics.Increment(fmt.Sprintf("wait_for_job.%s.timeout", name))
 			log.Printf("5 minutes elapsed, marking %s (type %s) as failed", idStr, name)
-			err := HandleStatusCallback(qj.ID, name, models.StatusFailed, currentAttemptCount, true)
+			err := HandleStatusCallback(qj.ID, name, models.ArchivedJobStatusFailed, currentAttemptCount, true)
 			go metrics.Increment(fmt.Sprintf("wait_for_job.%s.failed", name))
 			log.Printf("job %s (type %s) timed out after %v", idStr, name, time.Since(start))
 			if err == sql.ErrNoRows {

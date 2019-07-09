@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/kevinburke/rickover/models"
+	models "github.com/kevinburke/rickover/newmodels"
 )
 
 type DummyProcessor struct {

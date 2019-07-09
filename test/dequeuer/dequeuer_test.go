@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/kevinburke/rickover/dequeuer"
-	"github.com/kevinburke/rickover/models"
+	models "github.com/kevinburke/rickover/newmodels"
 	"github.com/kevinburke/rickover/test"
 	"github.com/kevinburke/rickover/test/factory"
 )
@@ -170,7 +170,7 @@ func runDQBench(b *testing.B, concurrency int) {
 	job := factory.CreateJob(b, models.Job{
 		Name:             factory.RandomId("").String()[:8],
 		Concurrency:      uint8(concurrency),
-		DeliveryStrategy: models.StrategyAtLeastOnce,
+		DeliveryStrategy: models.DeliveryStrategyAtLeastOnce,
 		Attempts:         1,
 	})
 	data, _ := json.Marshal(factory.RD)

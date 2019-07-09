@@ -2,6 +2,7 @@
 package queued_jobs
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -10,8 +11,7 @@ import (
 
 	"github.com/kevinburke/go-dberror"
 	"github.com/kevinburke/go-types"
-	"github.com/kevinburke/rickover/models"
-	"github.com/kevinburke/rickover/models/db"
+	models "github.com/kevinburke/rickover/newmodels"
 )
 
 const Prefix = "job_"
@@ -33,123 +33,9 @@ func (e *UnknownOrArchivedError) Error() string {
 	return e.Err
 }
 
-var enqueueStmt *sql.Stmt
-var getStmt *sql.Stmt
-var deleteStmt *sql.Stmt
-var acquireStmt *sql.Stmt
-var decrementStmt *sql.Stmt
-var countReadyAndAllStmt *sql.Stmt
-var countsByStatusStmt *sql.Stmt
-var oldJobsStmt *sql.Stmt
-
 // StuckJobLimit is the maximum number of stuck jobs to fetch in one database
 // query.
 var StuckJobLimit = 100
-
-func Setup() (err error) {
-	if !db.Connected() {
-		return errors.New("queued_jobs: no DB connection was established, can't query")
-	}
-
-	if enqueueStmt != nil {
-		return
-	}
-
-	query := fmt.Sprintf(`-- queued_jobs.Enqueue
-INSERT INTO queued_jobs (%s) 
-SELECT $1, name, attempts, $3, $4, '%s', $5
-FROM jobs 
-WHERE name=$2
-AND NOT EXISTS (
-	SELECT id FROM archived_jobs WHERE id=$1
-)
-RETURNING %s`, insertFields(), models.StatusQueued, fields())
-	enqueueStmt, err = db.Conn.Prepare(query)
-	if err != nil {
-		return err
-	}
-
-	query = fmt.Sprintf(`-- queued_jobs.Get
-SELECT %s
-FROM queued_jobs
-WHERE id = $1`, fields())
-	getStmt, err = db.Conn.Prepare(query)
-	if err != nil {
-		return err
-	}
-
-	query = `-- queued_jobs.Delete
-	DELETE FROM queued_jobs WHERE id = $1`
-	deleteStmt, err = db.Conn.Prepare(query)
-	if err != nil {
-		return err
-	}
-
-	query = fmt.Sprintf(`-- queued_jobs.Acquire
-WITH queued_job as (
-	SELECT id AS inner_id
-	FROM queued_jobs
-	WHERE status='%[1]s'
-		AND name = $1
-		AND run_after <= now()
-	ORDER BY created_at ASC
-	LIMIT 1
-	FOR UPDATE
-) UPDATE queued_jobs
-SET status='%[2]s',
-	updated_at=now()
-FROM queued_job
-WHERE queued_jobs.id = queued_job.inner_id 
-	AND status='%[1]s'
-RETURNING %[3]s`, models.StatusQueued, models.StatusInProgress, fields())
-	acquireStmt, err = db.Conn.Prepare(query)
-	if err != nil {
-		return err
-	}
-
-	query = fmt.Sprintf(`-- queued_jobs.Decrement
-UPDATE queued_jobs
-SET status = '%s',
-	updated_at = now(),
-	attempts = attempts - 1,
-	run_after = $3
-WHERE id = $1
-	AND attempts=$2
-	RETURNING %s`, models.StatusQueued, fields())
-	decrementStmt, err = db.Conn.Prepare(query)
-	if err != nil {
-		return err
-	}
-
-	query = `-- queued_jobs.CountReadyAndAll
-WITH all_count AS (
-	SELECT count(*) FROM queued_jobs
-), ready_count AS (
-	SELECT count(*) FROM queued_jobs WHERE run_after <= now()
-) 
-SELECT all_count.count, ready_count.count 
-FROM all_count, ready_count`
-	countReadyAndAllStmt, err = db.Conn.Prepare(query)
-	if err != nil {
-		return err
-	}
-
-	query = `-- queued_jobs.GetCountsByStatus
-SELECT name, count(*) FROM queued_jobs WHERE status=$1 GROUP BY name`
-	countsByStatusStmt, err = db.Conn.Prepare(query)
-	if err != nil {
-		return err
-	}
-
-	query = fmt.Sprintf(`-- queued_jobs.GetOldInProgressJobs
-SELECT %s FROM queued_jobs WHERE status='%s' AND updated_at < $1 LIMIT %d`,
-		fields(), models.StatusInProgress, StuckJobLimit)
-	oldJobsStmt, err = db.Conn.Prepare(query)
-	if err != nil {
-		return err
-	}
-	return
-}
 
 // Enqueue creates a new queued job with the given ID and fields. A
 // dberror.Error will be returned if Postgres returns a constraint failure -
@@ -157,8 +43,7 @@ SELECT %s FROM queued_jobs WHERE status='%s' AND updated_at < $1 LIMIT %d`,
 // `name` does not exist in the jobs table. Otherwise the QueuedJob will be
 // returned.
 func Enqueue(id types.PrefixUUID, name string, runAfter time.Time, expiresAt types.NullTime, data json.RawMessage) (*models.QueuedJob, error) {
-	qj := new(models.QueuedJob)
-	err := enqueueStmt.QueryRow(id, name, runAfter, expiresAt, []byte(data)).Scan(args(qj)...)
+	qj, err := models.DB.EnqueueJob(context.Background(), id, name, runAfter, expiresAt, []byte(data))
 	if err != nil {
 		if err == sql.ErrNoRows {
 			e := &UnknownOrArchivedError{
@@ -168,21 +53,22 @@ func Enqueue(id types.PrefixUUID, name string, runAfter time.Time, expiresAt typ
 		}
 		return nil, dberror.GetError(err)
 	}
-	return qj, err
+	qj.ID.Prefix = Prefix
+	return &qj, err
 }
 
 // Get the queued job with the given id. Returns the job, or an error. If no
 // record could be found, the error will be `queued_jobs.ErrNotFound`.
 func Get(id types.PrefixUUID) (*models.QueuedJob, error) {
-	qj := new(models.QueuedJob)
-	err := getStmt.QueryRow(id).Scan(args(qj)...)
+	qj, err := models.DB.GetQueuedJob(context.Background(), id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
 		}
 		return nil, dberror.GetError(err)
 	}
-	return qj, nil
+	qj.ID.Prefix = Prefix
+	return &qj, nil
 }
 
 // GetRetry attempts to retrieve the job attempts times before giving up.
@@ -200,11 +86,7 @@ func GetRetry(id types.PrefixUUID, attempts uint8) (job *models.QueuedJob, err e
 // Delete deletes the given queued job. Returns nil if the job was deleted
 // successfully. If no job exists to be deleted, sql.ErrNoRows is returned.
 func Delete(id types.PrefixUUID) error {
-	res, err := deleteStmt.Exec(id)
-	if err != nil {
-		return err
-	}
-	rows, err := res.RowsAffected()
+	rows, err := models.DB.DeleteQueuedJob(context.Background(), id)
 	if err != nil {
 		return err
 	}
@@ -233,35 +115,20 @@ func DeleteRetry(id types.PrefixUUID, attempts uint8) error {
 // the queued job and a boolean indicating whether the SELECT query found
 // a row, or a generic error/sql.ErrNoRows if no jobs are available.
 func Acquire(name string) (*models.QueuedJob, error) {
-
-	rows, err := acquireStmt.Query(name)
+	qjs, err := models.DB.AcquireJobs(context.Background(), name)
 	if err != nil {
 		err = dberror.GetError(err)
 		return nil, err
 	}
-	defer rows.Close()
-	count := 0
-	scanned := false
-	var qj *models.QueuedJob
-	for rows.Next() {
-		count += 1
-		if !scanned {
-			qj = new(models.QueuedJob)
-			rows.Scan(args(qj)...)
-			scanned = true
-		}
-	}
-	if count == 0 {
+	if len(qjs) == 0 {
 		return nil, sql.ErrNoRows
 	}
-	if count > 1 {
+	if len(qjs) > 1 {
 		fmt.Println(time.Now().UTC())
-		panic(fmt.Sprintf("Too many rows affected by Acquire for '%s': %d", name, count))
+		panic(fmt.Sprintf("Too many rows affected by Acquire for '%s': %d", name, len(qjs)))
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return qj, nil
+	qjs[0].ID.Prefix = Prefix
+	return &qjs[0], nil
 }
 
 // Decrement decrements the attempts counter for an existing job, and sets
@@ -272,41 +139,37 @@ func Acquire(name string) (*models.QueuedJob, error) {
 // attempts: The current value of the `attempts` column, the returned attempts
 // value will be this number minus 1.
 func Decrement(id types.PrefixUUID, attempts uint8, runAfter time.Time) (*models.QueuedJob, error) {
-	qj := new(models.QueuedJob)
-	err := decrementStmt.QueryRow(id, attempts, runAfter).Scan(args(qj)...)
+	qj, err := models.DB.DecrementJobAttempts(context.Background(), id, attempts, runAfter)
 	if err != nil {
 		err = dberror.GetError(err)
 		return nil, err
 	}
-	return qj, nil
+	qj.ID.Prefix = Prefix
+	return &qj, nil
 }
 
 // GetOldInProgressJobs finds queued in-progress jobs with an updated_at
 // timestamp older than olderThan. A maximum of StuckJobLimit jobs will be
 // returned.
 func GetOldInProgressJobs(olderThan time.Time) ([]*models.QueuedJob, error) {
-	rows, err := oldJobsStmt.Query(olderThan)
+	rows, err := models.DB.GetOldInProgressJobs(context.Background(), olderThan)
 	var jobs []*models.QueuedJob
 	if err != nil {
 		return jobs, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		qj := new(models.QueuedJob)
-		if err := rows.Scan(args(qj)...); err != nil {
-			return jobs, err
-		}
-		jobs = append(jobs, qj)
+	for _, qj := range rows {
+		j := qj
+		j.ID.Prefix = Prefix
+		jobs = append(jobs, &j)
 	}
-	err = rows.Err()
 	return jobs, err
 }
 
 // CountReadyAndAll returns the total number of queued and ready jobs in the
 // table.
-func CountReadyAndAll() (allCount int, readyCount int, err error) {
-	err = countReadyAndAllStmt.QueryRow().Scan(&allCount, &readyCount)
-	return
+func CountReadyAndAll() (int, int, error) {
+	row, err := models.DB.CountReadyAndAll(context.Background())
+	return row.AllCountCount, row.ReadyCountCount, err
 }
 
 // GetCountsByStatus returns a map with each job type as the key, followed by
@@ -315,57 +178,13 @@ func CountReadyAndAll() (allCount int, readyCount int, err error) {
 // "echo": 5,
 // "remind-assigned-driver": 7,
 func GetCountsByStatus(status models.JobStatus) (map[string]int64, error) {
-	rows, err := countsByStatusStmt.Query(status)
+	rows, err := models.DB.GetCountsByStatus(context.Background(), status)
 	m := make(map[string]int64)
 	if err != nil {
 		return m, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var name string
-		var count int64
-		err = rows.Scan(&name, &count)
-		if err != nil {
-			return m, err
-		}
-		m[name] = count
+	for _, row := range rows {
+		m[row.Name] = int64(row.Count)
 	}
-	err = rows.Err()
-	return m, err
-}
-
-func insertFields() string {
-	return `id,
-	name,
-	attempts,
-	run_after,
-	expires_at,
-	status,
-	data`
-}
-
-func fields() string {
-	return fmt.Sprintf(`'%s' || id,
-	name,
-	attempts,
-	run_after,
-	expires_at,
-	status,
-	data,
-	created_at,
-	updated_at`, Prefix)
-}
-
-func args(qj *models.QueuedJob) []interface{} {
-	return []interface{}{
-		&qj.ID,
-		&qj.Name,
-		&qj.Attempts,
-		&qj.RunAfter,
-		&qj.ExpiresAt,
-		&qj.Status,
-		&qj.Data,
-		&qj.CreatedAt,
-		&qj.UpdatedAt,
-	}
+	return m, nil
 }
